@@ -36,11 +36,11 @@ def get_date_range(months=12):
     return start_date.strftime("%Y/%m/%d"), end_date.strftime("%Y/%m/%d")
 
 
-def get_article_count(months=12, journal="JZWM"):
+def get_article_count(months=12, journal="VCP"):
     """Get total article count from PubMed (no limit) for a specific journal"""
     start_date, end_date = get_date_range(months)
 
-    j_info = JOURNALS.get(journal, JOURNALS["JZWM"])
+    j_info = JOURNALS.get(journal, JOURNALS["VCP"])
     journal_query = j_info['query']
     if j_info['exclude']:
         journal_query = f"({journal_query} NOT {j_info['exclude']}[Publication Type])"
@@ -81,7 +81,7 @@ def search_pubmed_articles(months=12, journal="all"):
         journal_query = "(" + " OR ".join(journal_queries) + ")"
     else:
         # Search specific journal
-        j_info = JOURNALS.get(journal, JOURNALS["JZWM"])
+        j_info = JOURNALS.get(journal, JOURNALS["VCP"])
         journal_query = j_info['query']
         if j_info['exclude']:
             journal_query = f"({journal_query} NOT {j_info['exclude']}[Publication Type])"
