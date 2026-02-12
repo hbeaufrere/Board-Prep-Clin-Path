@@ -523,6 +523,52 @@
             color: #2c5282;
             text-decoration: underline;
         }
+
+        /* Image question styles */
+        .mcq-image-container {
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .mcq-image-container img {
+            max-width: 500px;
+            max-height: 400px;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .mcq-image-caption {
+            font-size: 0.85rem;
+            color: #718096;
+            margin-top: 5px;
+            font-style: italic;
+        }
+
+        .mcq-image-link {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 5px 12px;
+            background: #edf2f7;
+            border-radius: 4px;
+            color: #2c5282;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .mcq-image-link:hover {
+            background: #e2e8f0;
+        }
+
+        .mcq-question-block {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+
+        .mcq-question-block:last-child {
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
@@ -557,6 +603,7 @@
                 <div class="source-tabs">
                     <div class="source-tab active" onclick="switchSource('pubmed')">PubMed</div>
                     <div class="source-tab" onclick="switchSource('eclinpath')">eClinPath</div>
+                    <div class="source-tab" onclick="switchSource('atlas')">Atlas (Images)</div>
                 </div>
 
                 <!-- PubMed Panel -->
@@ -603,6 +650,23 @@
                     <div class="articles-list" id="eclinpath-topics-list">
                         <div class="empty-state">
                             <p>Loading topics...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- eClinPath Atlas (Images) Panel -->
+                <div class="source-panel" id="atlas-panel">
+                    <div class="stats-bar">
+                        <div class="stat-item">
+                            <strong>Selected Categories:</strong> <span id="atlas-selected-count">0</span>
+                        </div>
+                        <button onclick="selectAllAtlas()" style="padding: 5px 12px; border-radius: 4px; border: 1px solid #cbd5e0; background: #edf2f7; cursor: pointer; font-size: 0.85rem;">Select All</button>
+                        <button onclick="clearAllAtlas()" style="padding: 5px 12px; border-radius: 4px; border: 1px solid #cbd5e0; background: #edf2f7; cursor: pointer; font-size: 0.85rem;">Clear</button>
+                    </div>
+                    <p style="font-size: 0.8rem; color: #718096; margin-bottom: 12px;">Select image categories from the <a href="https://eclinpath.com/atlas/" target="_blank" style="color: #2c5282;">eClinPath Atlas</a> to generate image-based questions (Hematology, Cytology, Urinalysis)</p>
+                    <div class="articles-list" id="atlas-categories-list">
+                        <div class="empty-state">
+                            <p>Loading atlas categories...</p>
                         </div>
                     </div>
                 </div>
@@ -671,8 +735,11 @@
         let articlesData = [];
         let eclinpathTopics = {};
         let selectedEclinpathTopics = [];
+        let atlasCategories = {};
+        let selectedAtlasCategories = [];
         let currentSource = 'pubmed';
         let formattedText = '';
+        let lastMcqResults = [];
 
         const journalNames = {
             'VCP': 'Vet Clin Pathol'
@@ -803,7 +870,24 @@
 
             try {
                 let response;
-                if (currentSource === 'eclinpath') {
+                if (currentSource === 'atlas') {
+                    if (selectedAtlasCategories.length === 0) {
+                        showAlert('Please select at least one atlas category', 'error');
+                        generateBtn.disabled = false;
+                        generateBtn.innerHTML = `
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2v4m0 12v4m-7-10H1m22 0h-4m-2.636-5.364l-2.828 2.828m-5.072 5.072l-2.828 2.828m0-10.728l2.828 2.828m5.072 5.072l2.828 2.828"/>
+                            </svg>
+                            Generate Questions
+                        `;
+                        return;
+                    }
+                    response = await fetch('/api/generate-mcq-atlas', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ num_questions: numQuestions, categories: selectedAtlasCategories })
+                    });
+                } else if (currentSource === 'eclinpath') {
                     if (selectedEclinpathTopics.length === 0) {
                         showAlert('Please select at least one eClinPath topic', 'error');
                         generateBtn.disabled = false;
@@ -831,8 +915,14 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // Format: Questions first, then all answers at the end
-                    const sourceLabel = currentSource === 'eclinpath' ? 'eClinPath topics' : 'veterinary clinical pathology journals';
+                    lastMcqResults = data.mcq_results;
+                    const sourceLabels = {
+                        'eclinpath': 'eClinPath topics',
+                        'atlas': 'eClinPath Atlas images',
+                        'pubmed': 'veterinary clinical pathology journals'
+                    };
+                    const sourceLabel = sourceLabels[currentSource] || 'veterinary clinical pathology journals';
+                    const hasAnyImages = data.mcq_results.some(mcq => mcq.has_image);
 
                     // Plain text version for copying
                     let questionsText = 'ACVP-STYLE CLINICAL PATHOLOGY QUESTIONS\n';
@@ -843,14 +933,14 @@
                     answersText += 'ANSWER KEY\n';
                     answersText += '=' .repeat(50) + '\n\n';
 
-                    // HTML version for display with clickable links
-                    let questionsHtml = 'ACVP-STYLE CLINICAL PATHOLOGY QUESTIONS\n';
-                    questionsHtml += `Generated from ${sourceLabel}\n`;
-                    questionsHtml += '=' .repeat(50) + '\n\n';
+                    // HTML version for display with clickable links and images
+                    let questionsHtml = '<div style="margin-bottom: 15px;">ACVP-STYLE CLINICAL PATHOLOGY QUESTIONS<br>';
+                    questionsHtml += `Generated from ${sourceLabel}<br>`;
+                    questionsHtml += '=' .repeat(50) + '</div>';
 
-                    let answersHtml = '\n\n' + '=' .repeat(50) + '\n';
-                    answersHtml += 'ANSWER KEY\n';
-                    answersHtml += '=' .repeat(50) + '\n\n';
+                    let answersHtml = '<div style="margin-top: 25px;">' + '=' .repeat(50) + '<br>';
+                    answersHtml += 'ANSWER KEY<br>';
+                    answersHtml += '=' .repeat(50) + '</div><br>';
 
                     data.mcq_results.forEach((mcq, index) => {
                         const questionNum = index + 1;
@@ -866,14 +956,34 @@
 
                             // Questions - clean up numbering prefix
                             const cleanQuestion = questionPart.replace(/^\d+\.\s*/, '').replace(/^QUESTION \d+:?\s*/i, '');
+
+                            // Plain text (no images)
+                            if (mcq.has_image && mcq.image_url) {
+                                questionsText += `${questionNum}. [Image: ${mcq.image_caption || 'See eClinPath Atlas'}]\n`;
+                                questionsText += `View image: ${mcq.article_url}\n\n`;
+                            }
                             questionsText += `${questionNum}. ${cleanQuestion}\n\n`;
                             questionsText += '-'.repeat(40) + '\n\n';
 
-                            questionsHtml += `${questionNum}. ${cleanQuestion}\n\n`;
-                            questionsHtml += '-'.repeat(40) + '\n\n';
+                            // HTML with images
+                            questionsHtml += '<div class="mcq-question-block">';
+                            if (mcq.has_image && mcq.image_url) {
+                                const proxyUrl = '/api/atlas-image-proxy?url=' + encodeURIComponent(mcq.image_url);
+                                questionsHtml += `<div class="mcq-image-container">`;
+                                questionsHtml += `<img src="${proxyUrl}" alt="${mcq.image_caption || 'Atlas image'}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">`;
+                                questionsHtml += `<div style="display:none;"><a href="${mcq.article_url}" target="_blank" class="mcq-image-link">View image on eClinPath Atlas</a></div>`;
+                                if (mcq.image_caption) {
+                                    questionsHtml += `<div class="mcq-image-caption">${mcq.image_caption}</div>`;
+                                }
+                                questionsHtml += `</div>`;
+                            } else if (mcq.article_journal === 'eClinPath Atlas') {
+                                questionsHtml += `<div class="mcq-image-container"><a href="${mcq.article_url}" target="_blank" class="mcq-image-link">View reference images on eClinPath Atlas</a></div>`;
+                            }
+                            questionsHtml += `${questionNum}. ${cleanQuestion.replace(/\n/g, '<br>')}`;
+                            questionsHtml += '</div>';
 
-                            // Answers - with reference and clickable link
-                            const isEclinpath = mcq.article_journal === 'eClinPath';
+                            // Answers
+                            const isEclinpath = mcq.article_journal === 'eClinPath' || mcq.article_journal === 'eClinPath Atlas';
                             let reference, refLabel, refUrl;
 
                             if (isEclinpath) {
@@ -895,27 +1005,35 @@
                             if (refUrl) answersText += `${refLabel}: ${refUrl}\n`;
                             answersText += '\n' + answerPart + '\n\n';
 
-                            answersHtml += `Question ${questionNum}:\n`;
-                            answersHtml += `Reference: ${reference}\n`;
-                            if (refUrl) answersHtml += `${refLabel}: <a href="${refUrl}" target="_blank" style="color: #2c5282;">${refUrl}</a>\n`;
-                            answersHtml += '\n' + answerPart + '\n\n';
+                            answersHtml += `Question ${questionNum}:<br>`;
+                            answersHtml += `Reference: ${reference}<br>`;
+                            if (refUrl) answersHtml += `${refLabel}: <a href="${refUrl}" target="_blank" style="color: #2c5282;">${refUrl}</a><br>`;
+                            answersHtml += '<br>' + answerPart.replace(/\n/g, '<br>') + '<br><br>';
                         } else {
                             const cleanQuestion = fullText.replace(/^\d+\.\s*/, '').replace(/^QUESTION \d+:?\s*/i, '');
                             questionsText += `${questionNum}. ${cleanQuestion}\n\n`;
                             questionsText += '-'.repeat(40) + '\n\n';
 
-                            questionsHtml += `${questionNum}. ${cleanQuestion}\n\n`;
-                            questionsHtml += '-'.repeat(40) + '\n\n';
+                            questionsHtml += '<div class="mcq-question-block">';
+                            if (mcq.has_image && mcq.image_url) {
+                                const proxyUrl = '/api/atlas-image-proxy?url=' + encodeURIComponent(mcq.image_url);
+                                questionsHtml += `<div class="mcq-image-container">`;
+                                questionsHtml += `<img src="${proxyUrl}" alt="${mcq.image_caption || 'Atlas image'}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">`;
+                                questionsHtml += `<div style="display:none;"><a href="${mcq.article_url}" target="_blank" class="mcq-image-link">View image on eClinPath Atlas</a></div>`;
+                                questionsHtml += `</div>`;
+                            }
+                            questionsHtml += `${questionNum}. ${cleanQuestion.replace(/\n/g, '<br>')}`;
+                            questionsHtml += '</div>';
                         }
                     });
 
                     formattedText = questionsText + answersText;
-                    const displayHtml = questionsHtml + answersHtml;
 
                     questionsSection.style.display = 'block';
-                    previewContent.innerHTML = displayHtml.replace(/\n/g, '<br>');
+                    previewContent.innerHTML = questionsHtml + answersHtml;
                     copyBtn.disabled = false;
-                    hint.textContent = `${data.mcq_results.length} questions generated - answers at the bottom`;
+                    const imageNote = hasAnyImages ? ' (with images)' : '';
+                    hint.textContent = `${data.mcq_results.length} questions generated${imageNote} - answers at the bottom`;
                     showAlert(`Generated ${data.mcq_results.length} questions successfully`, 'success');
                 } else {
                     showAlert(data.error || 'Failed to generate questions', 'error');
@@ -954,11 +1072,17 @@
             if (source === 'pubmed') {
                 document.querySelector('.source-tab:nth-child(1)').classList.add('active');
                 document.getElementById('pubmed-panel').classList.add('active');
-            } else {
+            } else if (source === 'eclinpath') {
                 document.querySelector('.source-tab:nth-child(2)').classList.add('active');
                 document.getElementById('eclinpath-panel').classList.add('active');
                 if (Object.keys(eclinpathTopics).length === 0) {
                     loadEclinpathTopics();
+                }
+            } else if (source === 'atlas') {
+                document.querySelector('.source-tab:nth-child(3)').classList.add('active');
+                document.getElementById('atlas-panel').classList.add('active');
+                if (Object.keys(atlasCategories).length === 0) {
+                    loadAtlasCategories();
                 }
             }
         }
@@ -1039,6 +1163,80 @@
             selectedEclinpathTopics = [];
             loadEclinpathTopics();
             document.getElementById('eclinpath-selected-count').textContent = 0;
+        }
+
+        // Atlas category functions
+        async function loadAtlasCategories() {
+            const listEl = document.getElementById('atlas-categories-list');
+
+            try {
+                const response = await fetch('/api/atlas-categories');
+                const data = await response.json();
+
+                if (data.success) {
+                    atlasCategories = data.categories;
+                    let html = '';
+
+                    for (const [category, info] of Object.entries(atlasCategories)) {
+                        const categoryId = 'atlas-' + category.replace(/[^a-zA-Z0-9]/g, '-');
+                        const subcats = info.subcategories || {};
+                        if (Object.keys(subcats).length === 0) continue;
+
+                        html += `<div class="topic-category">`;
+                        html += `<div class="topic-category-header" onclick="toggleCategory('${categoryId}', this)">`;
+                        html += `<span class="arrow">&#9654;</span> ${category}`;
+                        html += `</div>`;
+                        html += `<div class="topic-subtopics" id="subtopics-${categoryId}">`;
+
+                        for (const [subcategory, url] of Object.entries(subcats)) {
+                            const isSelected = selectedAtlasCategories.some(c => c.category === category && c.subcategory === subcategory);
+                            html += `<div class="topic-item ${isSelected ? 'selected' : ''}" onclick="toggleAtlasCategory('${category.replace(/'/g, "\\'")}', '${subcategory.replace(/'/g, "\\'")}', '${url}', this)">`;
+                            html += `<input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleAtlasCategory('${category.replace(/'/g, "\\'")}', '${subcategory.replace(/'/g, "\\'")}', '${url}', this.parentElement)">`;
+                            html += `<span>${subcategory}</span>`;
+                            html += `<a href="${url}" target="_blank" onclick="event.stopPropagation();">view</a>`;
+                            html += `</div>`;
+                        }
+
+                        html += `</div></div>`;
+                    }
+
+                    listEl.innerHTML = html;
+                }
+            } catch (error) {
+                listEl.innerHTML = '<p style="color: #e53e3e;">Failed to load atlas categories</p>';
+            }
+        }
+
+        function toggleAtlasCategory(category, subcategory, url, element) {
+            const idx = selectedAtlasCategories.findIndex(c => c.category === category && c.subcategory === subcategory);
+            if (idx >= 0) {
+                selectedAtlasCategories.splice(idx, 1);
+                element.classList.remove('selected');
+                element.querySelector('input[type="checkbox"]').checked = false;
+            } else {
+                selectedAtlasCategories.push({ category, subcategory, url });
+                element.classList.add('selected');
+                element.querySelector('input[type="checkbox"]').checked = true;
+            }
+            document.getElementById('atlas-selected-count').textContent = selectedAtlasCategories.length;
+        }
+
+        function selectAllAtlas() {
+            selectedAtlasCategories = [];
+            for (const [category, info] of Object.entries(atlasCategories)) {
+                const subcats = info.subcategories || {};
+                for (const [subcategory, url] of Object.entries(subcats)) {
+                    selectedAtlasCategories.push({ category, subcategory, url });
+                }
+            }
+            loadAtlasCategories();
+            document.getElementById('atlas-selected-count').textContent = selectedAtlasCategories.length;
+        }
+
+        function clearAllAtlas() {
+            selectedAtlasCategories = [];
+            loadAtlasCategories();
+            document.getElementById('atlas-selected-count').textContent = 0;
         }
 
         function showAlert(message, type) {
