@@ -17,6 +17,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key')
 
 PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+GOOGLE_APPS_SCRIPT_URL = os.getenv('GOOGLE_APPS_SCRIPT_URL', '')
 
 # Journal configurations with PubMed search terms
 JOURNALS = {
@@ -321,6 +322,132 @@ EXPLANATION: Please review the full article at {article['url']} to determine the
     }
 
 
+def fetch_drive_files():
+    """Fetch file list from Google Drive via Apps Script"""
+    if not GOOGLE_APPS_SCRIPT_URL:
+        return []
+
+    try:
+        response = requests.get(
+            GOOGLE_APPS_SCRIPT_URL,
+            params={"action": "list"},
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+        if data.get("success"):
+            return data.get("files", [])
+        return []
+    except requests.RequestException as e:
+        print(f"Error fetching Drive files: {e}")
+        return []
+
+
+def fetch_drive_file_content(file_id):
+    """Fetch text content of a Drive file via Apps Script"""
+    if not GOOGLE_APPS_SCRIPT_URL:
+        return None
+
+    try:
+        response = requests.get(
+            GOOGLE_APPS_SCRIPT_URL,
+            params={"action": "content", "fileId": file_id},
+            timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        if data.get("success"):
+            return data
+        return None
+    except requests.RequestException as e:
+        print(f"Error fetching Drive file content: {e}")
+        return None
+
+
+def generate_mcq_from_drive_file(file_data, num_questions=1):
+    """Generate MCQ from a Google Drive file's content"""
+    api_key = os.getenv('ANTHROPIC_API_KEY')
+
+    if not api_key:
+        return {
+            "article_title": file_data["fileName"],
+            "article_pmid": "",
+            "article_url": "",
+            "article_authors": "",
+            "article_journal": "Google Drive",
+            "article_year": "",
+            "questions": "Error: ANTHROPIC_API_KEY environment variable is not set"
+        }
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+
+        # Use up to 10000 chars of content to stay within token limits
+        content_text = file_data["content"][:10000]
+
+        prompt = f"""Based on the following veterinary clinical pathology document, generate {num_questions} multiple choice question(s) in board examination style.
+
+Document Title: {file_data['fileName']}
+
+Content:
+{content_text}
+
+For each question:
+1. Create a clinically relevant question that tests understanding of the key findings or concepts
+2. Provide 5 answer options (A, B, C, D, E) with 1 correct answer and 4 distractors
+3. Indicate the correct answer
+4. Provide a brief explanation
+
+Format each question as:
+QUESTION [number]:
+[Question text]
+
+A) [Option A]
+B) [Option B]
+C) [Option C]
+D) [Option D]
+E) [Option E]
+
+CORRECT ANSWER: [Letter]
+
+EXPLANATION: [Brief explanation of why this is correct and why other options are incorrect]
+
+---
+
+Make questions appropriate for board-level veterinary clinical pathologists."""
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        return {
+            "article_title": file_data["fileName"],
+            "article_pmid": "",
+            "article_url": "",
+            "article_authors": "",
+            "article_journal": "Google Drive",
+            "article_year": "",
+            "questions": message.content[0].text
+        }
+
+    except Exception as e:
+        print(f"Error generating MCQ from Drive file: {e}")
+        return {
+            "article_title": file_data["fileName"],
+            "article_pmid": "",
+            "article_url": "",
+            "article_authors": "",
+            "article_journal": "Google Drive",
+            "article_year": "",
+            "questions": f"Error generating question: {str(e)}"
+        }
+
+
 # Routes
 @app.route('/')
 def index():
@@ -361,6 +488,24 @@ def get_journal_stats():
         "success": True,
         "stats": stats,
         "months": months
+    })
+
+
+@app.route('/api/drive-files')
+def get_drive_files():
+    """API endpoint to fetch files from Google Drive"""
+    if not GOOGLE_APPS_SCRIPT_URL:
+        return jsonify({
+            "success": False,
+            "error": "Google Apps Script URL not configured. Set GOOGLE_APPS_SCRIPT_URL in your .env file.",
+            "files": []
+        })
+
+    files = fetch_drive_files()
+    return jsonify({
+        "success": True,
+        "count": len(files),
+        "files": files
     })
 
 
@@ -408,6 +553,64 @@ def generate_mcq():
                     "article_authors": article['authors'],
                     "article_journal": article['journal'],
                     "article_year": article['pub_date'],
+                    "questions": f"Error generating question: {str(e)}"
+                })
+
+    return jsonify({
+        "success": True,
+        "mcq_results": mcq_results
+    })
+
+
+@app.route('/api/generate-mcq-drive', methods=['POST'])
+def generate_mcq_drive():
+    """API endpoint to generate MCQs from Google Drive files"""
+    data = request.json
+    num_questions = int(data.get('num_questions', 5))
+    file_ids = data.get('file_ids', [])
+
+    if not file_ids:
+        return jsonify({
+            "success": False,
+            "error": "No files selected"
+        })
+
+    if not GOOGLE_APPS_SCRIPT_URL:
+        return jsonify({
+            "success": False,
+            "error": "Google Apps Script URL not configured"
+        })
+
+    # Fetch content for each selected file and generate MCQs
+    mcq_results = []
+    # Distribute questions across selected files
+    questions_per_file = max(1, num_questions // len(file_ids))
+    extra = num_questions - (questions_per_file * len(file_ids))
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {}
+        for i, file_id in enumerate(file_ids):
+            q_count = questions_per_file + (1 if i < extra else 0)
+            if q_count <= 0:
+                continue
+            file_data = fetch_drive_file_content(file_id)
+            if file_data:
+                future = executor.submit(generate_mcq_from_drive_file, file_data, q_count)
+                futures[future] = file_data
+
+        for future in as_completed(futures):
+            try:
+                mcq = future.result(timeout=60)
+                mcq_results.append(mcq)
+            except Exception as e:
+                file_data = futures[future]
+                mcq_results.append({
+                    "article_title": file_data.get("fileName", "Unknown"),
+                    "article_pmid": "",
+                    "article_url": "",
+                    "article_authors": "",
+                    "article_journal": "Google Drive",
+                    "article_year": "",
                     "questions": f"Error generating question: {str(e)}"
                 })
 

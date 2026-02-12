@@ -397,6 +397,102 @@
             flex-direction: column;
             gap: 20px;
         }
+
+        /* Source tabs */
+        .source-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 15px;
+        }
+
+        .source-tab {
+            padding: 10px 20px;
+            border: 2px solid #e2e8f0;
+            background: #f7fafc;
+            cursor: pointer;
+            font-weight: 600;
+            color: #718096;
+            transition: all 0.3s ease;
+        }
+
+        .source-tab:first-child {
+            border-radius: 8px 0 0 8px;
+        }
+
+        .source-tab:last-child {
+            border-radius: 0 8px 8px 0;
+        }
+
+        .source-tab.active {
+            background: #2c5282;
+            color: white;
+            border-color: #2c5282;
+        }
+
+        .source-tab:hover:not(.active) {
+            background: #edf2f7;
+        }
+
+        .source-panel {
+            display: none;
+        }
+
+        .source-panel.active {
+            display: block;
+        }
+
+        /* Drive file list */
+        .drive-file-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 4px solid #48bb78;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .drive-file-item:hover {
+            background: #edf2f7;
+        }
+
+        .drive-file-item.selected {
+            background: #ebf8ff;
+            border-left-color: #2c5282;
+        }
+
+        .drive-file-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .drive-file-name {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 0.95rem;
+        }
+
+        .drive-file-meta {
+            font-size: 0.8rem;
+            color: #718096;
+        }
+
+        .drive-not-configured {
+            text-align: center;
+            padding: 30px;
+            color: #718096;
+        }
+
+        .drive-not-configured code {
+            background: #edf2f7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
     </style>
 </head>
 <body>
@@ -428,32 +524,67 @@
         <div class="main-content">
             <!-- Articles Section -->
             <div class="card">
-                <h2>Recent Articles</h2>
-                <div class="stats-bar" id="stats-bar">
-                    <div class="stat-item">
-                        <label for="date-range-select" style="margin-right: 8px;">Period:</label>
-                        <select id="date-range-select" onchange="loadArticles()" style="padding: 5px 10px; border-radius: 4px; border: 1px solid #cbd5e0;">
-                            <option value="6">Past 6 months</option>
-                            <option value="12" selected>Past 12 months</option>
-                            <option value="24">Past 2 years</option>
-                            <option value="36">Past 3 years</option>
-                            <option value="60">Past 5 years</option>
-                        </select>
+                <div class="source-tabs">
+                    <div class="source-tab active" onclick="switchSource('pubmed')">PubMed</div>
+                    <div class="source-tab" onclick="switchSource('drive')">Google Drive</div>
+                </div>
+
+                <!-- PubMed Panel -->
+                <div class="source-panel active" id="pubmed-panel">
+                    <div class="stats-bar" id="stats-bar">
+                        <div class="stat-item">
+                            <label for="date-range-select" style="margin-right: 8px;">Period:</label>
+                            <select id="date-range-select" onchange="loadArticles()" style="padding: 5px 10px; border-radius: 4px; border: 1px solid #cbd5e0;">
+                                <option value="6">Past 6 months</option>
+                                <option value="12" selected>Past 12 months</option>
+                                <option value="24">Past 2 years</option>
+                                <option value="36">Past 3 years</option>
+                                <option value="60">Past 5 years</option>
+                            </select>
+                        </div>
+                        <div class="stat-item">
+                            <strong>Total Articles:</strong> <span id="article-count">0</span>
+                        </div>
                     </div>
-                    <div class="stat-item">
-                        <strong>Total Articles:</strong> <span id="article-count">0</span>
+                    <div class="loading" id="articles-loading">
+                        <div class="spinner"></div>
+                        <p>Fetching articles from PubMed...</p>
+                    </div>
+                    <div class="articles-list" id="articles-list">
+                        <div class="empty-state">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                            </svg>
+                            <p>Loading articles...</p>
+                        </div>
                     </div>
                 </div>
-                <div class="loading" id="articles-loading">
-                    <div class="spinner"></div>
-                    <p>Fetching articles from PubMed...</p>
-                </div>
-                <div class="articles-list" id="articles-list">
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
-                        </svg>
-                        <p>Loading articles...</p>
+
+                <!-- Google Drive Panel -->
+                <div class="source-panel" id="drive-panel">
+                    <div class="stats-bar">
+                        <div class="stat-item">
+                            <strong>Drive Files:</strong> <span id="drive-file-count">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <strong>Selected:</strong> <span id="drive-selected-count">0</span>
+                        </div>
+                        <button onclick="loadDriveFiles()" style="padding: 5px 12px; border-radius: 4px; border: 1px solid #cbd5e0; background: #edf2f7; cursor: pointer; font-size: 0.85rem;">Refresh</button>
+                    </div>
+                    <div class="loading" id="drive-loading">
+                        <div class="spinner"></div>
+                        <p>Fetching files from Google Drive...</p>
+                    </div>
+                    <div class="articles-list" id="drive-files-list">
+                        <div class="drive-not-configured" id="drive-not-configured">
+                            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#718096" stroke-width="1.5" style="margin-bottom: 15px;">
+                                <path d="M22 12H16L14 15H10L8 12H2"/>
+                                <path d="M5.45 5.11L2 12V18A2 2 0 0 0 4 20H20A2 2 0 0 0 22 18V12L18.55 5.11A2 2 0 0 0 16.76 4H7.24A2 2 0 0 0 5.45 5.11Z"/>
+                            </svg>
+                            <p style="margin-bottom: 10px;">Google Drive not connected yet</p>
+                            <p style="font-size: 0.85rem;">Set <code>GOOGLE_APPS_SCRIPT_URL</code> in your .env file</p>
+                            <p style="font-size: 0.85rem; margin-top: 5px;">See <code>google_apps_script.js</code> for setup instructions</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -513,12 +644,15 @@
         </div>
 
         <footer>
-            <p>Powered by PubMed E-utilities and Claude AI</p>
+            <p>Powered by PubMed E-utilities, Google Drive, and Claude AI</p>
         </footer>
     </div>
 
     <script>
         let articlesData = [];
+        let driveFilesData = [];
+        let selectedDriveFiles = new Set();
+        let currentSource = 'pubmed';
         let formattedText = '';
 
         const journalNames = {
@@ -649,11 +783,32 @@
             generateBtn.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:0;"></div> Generating...';
 
             try {
-                const response = await fetch('/api/generate-mcq', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ num_questions: numQuestions, months: months, journal: journal })
-                });
+                let response;
+                if (currentSource === 'drive') {
+                    const fileIds = Array.from(selectedDriveFiles);
+                    if (fileIds.length === 0) {
+                        showAlert('Please select at least one file from Google Drive', 'error');
+                        generateBtn.disabled = false;
+                        generateBtn.innerHTML = `
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2v4m0 12v4m-7-10H1m22 0h-4m-2.636-5.364l-2.828 2.828m-5.072 5.072l-2.828 2.828m0-10.728l2.828 2.828m5.072 5.072l2.828 2.828"/>
+                            </svg>
+                            Generate Questions
+                        `;
+                        return;
+                    }
+                    response = await fetch('/api/generate-mcq-drive', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ num_questions: numQuestions, file_ids: fileIds })
+                    });
+                } else {
+                    response = await fetch('/api/generate-mcq', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ num_questions: numQuestions, months: months, journal: journal })
+                    });
+                }
 
                 const data = await response.json();
 
@@ -759,6 +914,86 @@
             }).catch(err => {
                 showAlert('Failed to copy: ' + err.message, 'error');
             });
+        }
+
+        function switchSource(source) {
+            currentSource = source;
+            document.querySelectorAll('.source-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.source-panel').forEach(panel => panel.classList.remove('active'));
+
+            if (source === 'pubmed') {
+                document.querySelector('.source-tab:nth-child(1)').classList.add('active');
+                document.getElementById('pubmed-panel').classList.add('active');
+            } else {
+                document.querySelector('.source-tab:nth-child(2)').classList.add('active');
+                document.getElementById('drive-panel').classList.add('active');
+                if (driveFilesData.length === 0) {
+                    loadDriveFiles();
+                }
+            }
+        }
+
+        async function loadDriveFiles() {
+            const loadingEl = document.getElementById('drive-loading');
+            const listEl = document.getElementById('drive-files-list');
+            const notConfigured = document.getElementById('drive-not-configured');
+
+            loadingEl.classList.add('active');
+
+            try {
+                const response = await fetch('/api/drive-files');
+                const data = await response.json();
+
+                loadingEl.classList.remove('active');
+
+                if (data.success) {
+                    driveFilesData = data.files;
+                    document.getElementById('drive-file-count').textContent = data.count;
+
+                    if (data.files.length === 0) {
+                        listEl.innerHTML = '<div class="drive-not-configured"><p>No files found in the Drive folder.</p><p style="font-size: 0.85rem; margin-top: 5px;">Add PDF, Google Doc, or Word files to your folder.</p></div>';
+                    } else {
+                        listEl.innerHTML = data.files.map(file => {
+                            const fileType = file.mimeType.includes('pdf') ? 'PDF' :
+                                             file.mimeType.includes('document') ? 'DOC' :
+                                             file.mimeType.includes('word') ? 'DOCX' : 'TXT';
+                            const checked = selectedDriveFiles.has(file.id) ? 'checked' : '';
+                            const selectedClass = selectedDriveFiles.has(file.id) ? 'selected' : '';
+                            return `
+                                <div class="drive-file-item ${selectedClass}" onclick="toggleDriveFile('${file.id}', this)">
+                                    <input type="checkbox" ${checked} onclick="event.stopPropagation(); toggleDriveFile('${file.id}', this.parentElement)">
+                                    <div>
+                                        <div class="drive-file-name">${file.name}</div>
+                                        <div class="drive-file-meta">${fileType} | Updated: ${new Date(file.lastUpdated).toLocaleDateString()}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                } else {
+                    if (notConfigured) {
+                        notConfigured.style.display = 'block';
+                    } else {
+                        listEl.innerHTML = '<div class="drive-not-configured"><p>Google Drive not connected yet</p><p style="font-size: 0.85rem; margin-top: 5px;">Set <code>GOOGLE_APPS_SCRIPT_URL</code> in your .env file</p></div>';
+                    }
+                }
+            } catch (error) {
+                loadingEl.classList.remove('active');
+                showAlert('Failed to fetch Drive files: ' + error.message, 'error');
+            }
+        }
+
+        function toggleDriveFile(fileId, element) {
+            if (selectedDriveFiles.has(fileId)) {
+                selectedDriveFiles.delete(fileId);
+                element.classList.remove('selected');
+                element.querySelector('input[type="checkbox"]').checked = false;
+            } else {
+                selectedDriveFiles.add(fileId);
+                element.classList.add('selected');
+                element.querySelector('input[type="checkbox"]').checked = true;
+            }
+            document.getElementById('drive-selected-count').textContent = selectedDriveFiles.size;
         }
 
         function showAlert(message, type) {
