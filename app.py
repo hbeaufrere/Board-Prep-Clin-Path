@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, render_template, jsonify, request, Response
 import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -669,18 +670,45 @@ ECLINPATH_ATLAS = {
 
 # Browser-like headers for fetching eClinPath pages
 BROWSER_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
     'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+}
+
+# Headers specifically for fetching images (with Referer)
+IMAGE_FETCH_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Referer': 'https://eclinpath.com/',
+    'Sec-Fetch-Dest': 'image',
+    'Sec-Fetch-Mode': 'no-cors',
+    'Sec-Fetch-Site': 'same-origin',
 }
 
 
 def fetch_atlas_page(url):
     """Fetch an eClinPath atlas gallery page with browser-like headers"""
     try:
-        response = requests.get(url, headers=BROWSER_HEADERS, timeout=30)
+        session = requests.Session()
+        # First visit the main page to get cookies
+        session.get('https://eclinpath.com/', headers=BROWSER_HEADERS, timeout=10)
+        # Then fetch the actual page
+        response = session.get(url, headers={
+            **BROWSER_HEADERS,
+            'Referer': 'https://eclinpath.com/',
+        }, timeout=30)
         response.raise_for_status()
+        print(f"Successfully fetched atlas page: {url} ({len(response.text)} chars)")
         return response.text
     except requests.RequestException as e:
         print(f"Error fetching atlas page {url}: {e}")
@@ -688,85 +716,185 @@ def fetch_atlas_page(url):
 
 
 def extract_gallery_images(html):
-    """Extract image URLs and captions from eClinPath gallery page HTML"""
+    """Extract image URLs and captions from eClinPath gallery page HTML using BeautifulSoup"""
     images = []
     if not html:
         return images
 
-    # NextGEN Gallery: look for full-size image links in anchor tags
-    # Pattern 1: <a> tags linking to gallery images with data-title or title attributes
-    link_pattern = re.compile(
-        r'<a[^>]*href=["\']([^"\']*(?:wp-content/gallery|wp-content/uploads)[^"\']*\.(?:jpg|jpeg|png|gif))["\'][^>]*',
-        re.IGNORECASE
-    )
-    title_pattern = re.compile(r'(?:data-title|title|alt)=["\']([^"\']*)["\']', re.IGNORECASE)
+    soup = BeautifulSoup(html, 'html.parser')
 
-    for match in link_pattern.finditer(html):
-        url = match.group(1)
-        # Skip thumbnails
+    # Strategy 1: Find NextGEN Gallery images (ngg-gallery-image, ngg-gallery)
+    # Look for gallery containers and their image links
+    gallery_links = soup.select('a[data-src], a[data-image], a[href*="wp-content"]')
+    for link in gallery_links:
+        url = link.get('data-src') or link.get('data-image') or link.get('href', '')
+        if not url or not re.search(r'\.(jpg|jpeg|png|gif)', url, re.IGNORECASE):
+            continue
         if '/thumbs/' in url or '/thumb_' in url:
             continue
-        # Ensure absolute URL
-        if url.startswith('/'):
-            url = 'https://eclinpath.com' + url
-        elif not url.startswith('http'):
-            url = 'https://eclinpath.com/' + url
-
-        # Try to find caption in surrounding context
-        context = match.group(0)
-        caption_match = title_pattern.search(context)
-        caption = caption_match.group(1) if caption_match else ""
-
+        url = _ensure_absolute_url(url)
+        caption = (link.get('data-title') or link.get('title') or
+                   link.get('data-caption') or link.get('alt') or '')
+        # Also check for caption in child img alt
+        child_img = link.find('img')
+        if child_img and not caption:
+            caption = child_img.get('alt', '')
         images.append({"url": url, "caption": caption})
 
-    # Pattern 2: <img> tags with gallery image sources
+    # Strategy 2: Find all img tags in content area with gallery/upload paths
     if not images:
-        img_pattern = re.compile(
-            r'<img[^>]*src=["\']([^"\']*(?:wp-content/gallery|wp-content/uploads)[^"\']*\.(?:jpg|jpeg|png|gif))["\'][^>]*',
-            re.IGNORECASE
-        )
-        for match in img_pattern.finditer(html):
-            url = match.group(1)
-            if '/thumbs/' in url or '/thumb_' in url:
+        content_area = soup.select_one('.entry-content, .post-content, article, .ngg-galleryoverview, #content, main')
+        img_container = content_area if content_area else soup
+        for img in img_container.find_all('img'):
+            src = img.get('data-src') or img.get('data-original') or img.get('src', '')
+            if not src:
                 continue
-            if url.startswith('/'):
-                url = 'https://eclinpath.com' + url
-            elif not url.startswith('http'):
-                url = 'https://eclinpath.com/' + url
+            # Accept images from wp-content or the eclinpath domain
+            if not re.search(r'(wp-content|eclinpath\.com)', src, re.IGNORECASE):
+                continue
+            if not re.search(r'\.(jpg|jpeg|png|gif)', src, re.IGNORECASE):
+                continue
+            if '/thumbs/' in src or '/thumb_' in src or 'thumbnail' in src.lower():
+                # Check for full-size version in srcset or parent link
+                full_url = _find_full_size_image(img)
+                if full_url:
+                    src = full_url
+                else:
+                    continue
+            src = _ensure_absolute_url(src)
+            caption = img.get('alt') or img.get('title') or ''
+            # Check parent figure for figcaption
+            parent_fig = img.find_parent('figure')
+            if parent_fig:
+                figcap = parent_fig.find('figcaption')
+                if figcap and figcap.get_text(strip=True):
+                    caption = figcap.get_text(strip=True)
+            images.append({"url": src, "caption": caption})
 
-            context = match.group(0)
-            alt_match = re.search(r'alt=["\']([^"\']*)["\']', context, re.IGNORECASE)
-            caption = alt_match.group(1) if alt_match else ""
-            images.append({"url": url, "caption": caption})
-
-    # Pattern 3: NextGEN Gallery JSON data embedded in page
+    # Strategy 3: Find images in srcset attributes (responsive images)
     if not images:
-        ngg_url_pattern = re.compile(r'"(?:image_url|full_image_url|href)":\s*"([^"]*\.(?:jpg|jpeg|png|gif))"', re.IGNORECASE)
-        for match in ngg_url_pattern.finditer(html):
-            url = match.group(1).replace('\\/', '/')
-            if url.startswith('/'):
-                url = 'https://eclinpath.com' + url
-            elif not url.startswith('http'):
-                url = 'https://eclinpath.com/' + url
-            images.append({"url": url, "caption": ""})
+        for img in soup.find_all('img', srcset=True):
+            srcset = img.get('srcset', '')
+            # Parse srcset to find largest image
+            largest_url = _parse_srcset_largest(srcset)
+            if largest_url and re.search(r'\.(jpg|jpeg|png|gif)', largest_url, re.IGNORECASE):
+                largest_url = _ensure_absolute_url(largest_url)
+                caption = img.get('alt') or img.get('title') or ''
+                images.append({"url": largest_url, "caption": caption})
+
+    # Strategy 4: Regex fallback for NextGEN Gallery JSON data and inline URLs
+    if not images:
+        # NextGEN Gallery JSON
+        ngg_patterns = [
+            r'"(?:image_url|full_image_url|href|src|full)":\s*"([^"]*\.(?:jpg|jpeg|png|gif))"',
+            r'"(?:image|file|path)":\s*"([^"]*(?:wp-content|uploads)[^"]*\.(?:jpg|jpeg|png|gif))"',
+        ]
+        for pattern in ngg_patterns:
+            for match in re.finditer(pattern, html, re.IGNORECASE):
+                url = match.group(1).replace('\\/', '/')
+                url = _ensure_absolute_url(url)
+                images.append({"url": url, "caption": ""})
+            if images:
+                break
+
+    # Strategy 5: Last resort - find ANY image URLs with eclinpath domain
+    if not images:
+        all_img_urls = re.findall(
+            r'(https?://eclinpath\.com[^"\'\s<>]*\.(?:jpg|jpeg|png|gif))',
+            html, re.IGNORECASE
+        )
+        for url in all_img_urls:
+            if '/thumbs/' not in url and '/thumb_' not in url:
+                images.append({"url": url, "caption": ""})
 
     # Deduplicate by URL
     seen = set()
     unique_images = []
     for img in images:
-        if img["url"] not in seen:
-            seen.add(img["url"])
+        normalized_url = img["url"].split('?')[0]  # Remove query params for dedup
+        if normalized_url not in seen:
+            seen.add(normalized_url)
             unique_images.append(img)
 
+    print(f"Image extraction found {len(unique_images)} unique images")
     return unique_images
+
+
+def _ensure_absolute_url(url):
+    """Convert relative URLs to absolute eClinPath URLs"""
+    if url.startswith('//'):
+        return 'https:' + url
+    elif url.startswith('/'):
+        return 'https://eclinpath.com' + url
+    elif not url.startswith('http'):
+        return 'https://eclinpath.com/' + url
+    return url
+
+
+def _find_full_size_image(img_tag):
+    """Try to find the full-size version of a thumbnail image"""
+    # Check parent <a> link
+    parent_a = img_tag.find_parent('a')
+    if parent_a:
+        href = parent_a.get('href', '')
+        if re.search(r'\.(jpg|jpeg|png|gif)', href, re.IGNORECASE):
+            return href
+    # Check srcset for largest version
+    srcset = img_tag.get('srcset', '')
+    if srcset:
+        return _parse_srcset_largest(srcset)
+    # Check data attributes
+    for attr in ['data-src', 'data-original', 'data-full', 'data-large']:
+        val = img_tag.get(attr)
+        if val and re.search(r'\.(jpg|jpeg|png|gif)', val, re.IGNORECASE):
+            return val
+    return None
+
+
+def _parse_srcset_largest(srcset):
+    """Parse srcset attribute and return the URL of the largest image"""
+    if not srcset:
+        return None
+    candidates = []
+    for part in srcset.split(','):
+        part = part.strip()
+        pieces = part.split()
+        if len(pieces) >= 2:
+            url = pieces[0]
+            descriptor = pieces[1]
+            # Parse width descriptor like "1024w"
+            width_match = re.match(r'(\d+)w', descriptor)
+            if width_match:
+                candidates.append((int(width_match.group(1)), url))
+            # Parse pixel density like "2x"
+            density_match = re.match(r'([\d.]+)x', descriptor)
+            if density_match:
+                candidates.append((int(float(density_match.group(1)) * 1000), url))
+        elif len(pieces) == 1:
+            candidates.append((0, pieces[0]))
+    if candidates:
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        return candidates[0][1]
+    return None
 
 
 def fetch_image_as_base64(image_url):
     """Download an image and return base64-encoded data with media type"""
     try:
-        response = requests.get(image_url, headers=BROWSER_HEADERS, timeout=15)
+        session = requests.Session()
+        # Visit eClinPath first to get cookies
+        session.get('https://eclinpath.com/', headers=BROWSER_HEADERS, timeout=10)
+        # Fetch the image with proper Referer
+        response = session.get(image_url, headers=IMAGE_FETCH_HEADERS, timeout=15)
         response.raise_for_status()
         content_type = response.headers.get('Content-Type', 'image/jpeg')
+        # Verify we actually got an image (not an HTML error page)
+        if 'text/html' in content_type:
+            print(f"Got HTML instead of image for {image_url}")
+            return None, None
+        if len(response.content) < 1000:
+            print(f"Image too small ({len(response.content)} bytes), likely an error: {image_url}")
+            return None, None
         if 'png' in content_type:
             media_type = 'image/png'
         elif 'gif' in content_type:
@@ -774,6 +902,7 @@ def fetch_image_as_base64(image_url):
         else:
             media_type = 'image/jpeg'
         b64_data = base64.b64encode(response.content).decode('utf-8')
+        print(f"Successfully fetched image: {image_url} ({len(response.content)} bytes, {media_type})")
         return b64_data, media_type
     except requests.RequestException as e:
         print(f"Error fetching image {image_url}: {e}")
@@ -1172,9 +1301,19 @@ def generate_mcq_atlas():
                     "image_caption": "",
                 })
 
+    # Add diagnostic info
+    images_found = sum(1 for r in mcq_results if r.get('has_image'))
+    total = len(mcq_results)
+    print(f"Atlas MCQ generation complete: {images_found}/{total} questions have images")
+
     return jsonify({
         "success": True,
-        "mcq_results": mcq_results
+        "mcq_results": mcq_results,
+        "debug_info": {
+            "total_questions": total,
+            "questions_with_images": images_found,
+            "questions_without_images": total - images_found,
+        }
     })
 
 
@@ -1186,9 +1325,17 @@ def atlas_image_proxy():
         return '', 404
 
     try:
-        response = requests.get(image_url, headers=BROWSER_HEADERS, timeout=15)
+        session = requests.Session()
+        # Get cookies first
+        session.get('https://eclinpath.com/', headers=BROWSER_HEADERS, timeout=10)
+        # Fetch image with proper headers
+        response = session.get(image_url, headers=IMAGE_FETCH_HEADERS, timeout=15)
         response.raise_for_status()
         content_type = response.headers.get('Content-Type', 'image/jpeg')
+        # Verify we got an actual image
+        if 'text/html' in content_type:
+            print(f"Image proxy got HTML instead of image for: {image_url}")
+            return '', 404
         return Response(
             response.content,
             status=200,
@@ -1197,7 +1344,8 @@ def atlas_image_proxy():
                 'Cache-Control': 'public, max-age=86400',
             }
         )
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"Image proxy error for {image_url}: {e}")
         return '', 404
 
 

@@ -548,16 +548,44 @@
         .mcq-image-link {
             display: inline-block;
             margin-top: 8px;
-            padding: 5px 12px;
-            background: #edf2f7;
-            border-radius: 4px;
+            padding: 8px 16px;
+            background: #ebf8ff;
+            border: 1px solid #90cdf4;
+            border-radius: 6px;
             color: #2c5282;
             text-decoration: none;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
+            font-weight: 500;
         }
 
         .mcq-image-link:hover {
-            background: #e2e8f0;
+            background: #bee3f8;
+            border-color: #63b3ed;
+        }
+
+        .mcq-image-fallback {
+            margin: 12px 0;
+            padding: 12px 16px;
+            background: #fffbeb;
+            border: 1px solid #fbbf24;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .mcq-image-fallback p {
+            margin: 4px 0;
+            font-size: 0.85rem;
+            color: #92400e;
+        }
+
+        .mcq-debug-info {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #276749;
         }
 
         .mcq-question-block {
@@ -969,15 +997,24 @@
                             questionsHtml += '<div class="mcq-question-block">';
                             if (mcq.has_image && mcq.image_url) {
                                 const proxyUrl = '/api/atlas-image-proxy?url=' + encodeURIComponent(mcq.image_url);
+                                const imgId = 'atlas-img-' + questionNum;
+                                const fallbackId = 'atlas-fallback-' + questionNum;
                                 questionsHtml += `<div class="mcq-image-container">`;
-                                questionsHtml += `<img src="${proxyUrl}" alt="${mcq.image_caption || 'Atlas image'}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">`;
-                                questionsHtml += `<div style="display:none;"><a href="${mcq.article_url}" target="_blank" class="mcq-image-link">View image on eClinPath Atlas</a></div>`;
+                                questionsHtml += `<img id="${imgId}" src="${proxyUrl}" alt="${mcq.image_caption || 'Atlas image'}" `;
+                                questionsHtml += `onerror="document.getElementById('${imgId}').style.display='none'; document.getElementById('${fallbackId}').style.display='block';">`;
+                                questionsHtml += `<div id="${fallbackId}" class="mcq-image-fallback" style="display:none;">`;
+                                questionsHtml += `<p>Image could not be loaded from eClinPath.</p>`;
+                                questionsHtml += `<a href="${mcq.image_url}" target="_blank" class="mcq-image-link">View original image on eClinPath</a>`;
+                                questionsHtml += `</div>`;
                                 if (mcq.image_caption) {
                                     questionsHtml += `<div class="mcq-image-caption">${mcq.image_caption}</div>`;
                                 }
                                 questionsHtml += `</div>`;
                             } else if (mcq.article_journal === 'eClinPath Atlas') {
-                                questionsHtml += `<div class="mcq-image-container"><a href="${mcq.article_url}" target="_blank" class="mcq-image-link">View reference images on eClinPath Atlas</a></div>`;
+                                questionsHtml += `<div class="mcq-image-fallback">`;
+                                questionsHtml += `<p>This question describes findings from an eClinPath Atlas image.</p>`;
+                                questionsHtml += `<a href="${mcq.article_url}" target="_blank" class="mcq-image-link">Open eClinPath Atlas gallery to view reference images</a>`;
+                                questionsHtml += `</div>`;
                             }
                             questionsHtml += `${questionNum}. ${cleanQuestion.replace(/\n/g, '<br>')}`;
                             questionsHtml += '</div>';
@@ -1016,16 +1053,37 @@
 
                             questionsHtml += '<div class="mcq-question-block">';
                             if (mcq.has_image && mcq.image_url) {
-                                const proxyUrl = '/api/atlas-image-proxy?url=' + encodeURIComponent(mcq.image_url);
+                                const proxyUrl2 = '/api/atlas-image-proxy?url=' + encodeURIComponent(mcq.image_url);
+                                const imgId2 = 'atlas-img2-' + questionNum;
+                                const fallbackId2 = 'atlas-fallback2-' + questionNum;
                                 questionsHtml += `<div class="mcq-image-container">`;
-                                questionsHtml += `<img src="${proxyUrl}" alt="${mcq.image_caption || 'Atlas image'}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">`;
-                                questionsHtml += `<div style="display:none;"><a href="${mcq.article_url}" target="_blank" class="mcq-image-link">View image on eClinPath Atlas</a></div>`;
+                                questionsHtml += `<img id="${imgId2}" src="${proxyUrl2}" alt="${mcq.image_caption || 'Atlas image'}" `;
+                                questionsHtml += `onerror="document.getElementById('${imgId2}').style.display='none'; document.getElementById('${fallbackId2}').style.display='block';">`;
+                                questionsHtml += `<div id="${fallbackId2}" class="mcq-image-fallback" style="display:none;">`;
+                                questionsHtml += `<p>Image could not be loaded.</p>`;
+                                questionsHtml += `<a href="${mcq.image_url}" target="_blank" class="mcq-image-link">View original image on eClinPath</a>`;
+                                questionsHtml += `</div>`;
+                                questionsHtml += `</div>`;
+                            } else if (mcq.article_journal === 'eClinPath Atlas') {
+                                questionsHtml += `<div class="mcq-image-fallback">`;
+                                questionsHtml += `<p>This question describes findings from an eClinPath Atlas image.</p>`;
+                                questionsHtml += `<a href="${mcq.article_url}" target="_blank" class="mcq-image-link">Open eClinPath Atlas gallery to view reference images</a>`;
                                 questionsHtml += `</div>`;
                             }
                             questionsHtml += `${questionNum}. ${cleanQuestion.replace(/\n/g, '<br>')}`;
                             questionsHtml += '</div>';
                         }
                     });
+
+                    // Show debug info if available (helps diagnose image issues)
+                    if (data.debug_info && data.debug_info.questions_without_images > 0 && currentSource === 'atlas') {
+                        questionsHtml += `<div class="mcq-debug-info">`;
+                        questionsHtml += `Image status: ${data.debug_info.questions_with_images}/${data.debug_info.total_questions} questions have embedded images. `;
+                        if (data.debug_info.questions_without_images > 0) {
+                            questionsHtml += `For questions without images, open the eClinPath Atlas link to view reference images alongside the question.`;
+                        }
+                        questionsHtml += `</div>`;
+                    }
 
                     formattedText = questionsText + answersText;
 
