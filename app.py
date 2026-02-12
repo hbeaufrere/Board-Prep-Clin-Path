@@ -18,6 +18,24 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key')
 
 PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 
+# NCBI E-utilities requires tool and email parameters for programmatic access
+# An API key is optional but increases rate limits from 3 to 10 requests/second
+NCBI_API_KEY = os.getenv('NCBI_API_KEY', '')
+NCBI_TOOL = "vet-clin-path-mcq-generator"
+NCBI_EMAIL = os.getenv('NCBI_EMAIL', 'vetclinpath.mcq@gmail.com')
+
+
+def get_ncbi_params():
+    """Get common NCBI E-utilities parameters required for API access"""
+    params = {
+        "tool": NCBI_TOOL,
+        "email": NCBI_EMAIL,
+    }
+    if NCBI_API_KEY:
+        params["api_key"] = NCBI_API_KEY
+    return params
+
+
 # Journal configurations with PubMed search terms
 JOURNALS = {
     "VCP": {
@@ -52,14 +70,17 @@ def get_article_count(months=12, journal="VCP"):
         "db": "pubmed",
         "term": query,
         "retmax": 0,  # Don't need IDs, just the count
-        "retmode": "json"
+        "retmode": "json",
+        **get_ncbi_params()
     }
 
     try:
         response = requests.get(search_url, params=search_params, timeout=30)
         response.raise_for_status()
         search_results = response.json()
-        return int(search_results.get("esearchresult", {}).get("count", 0))
+        count = int(search_results.get("esearchresult", {}).get("count", 0))
+        print(f"PubMed article count for {journal}: {count} (query: {query})")
+        return count
     except requests.RequestException as e:
         print(f"Error getting article count: {e}")
         return 0
@@ -95,17 +116,22 @@ def search_pubmed_articles(months=12, journal="all"):
         "term": query,
         "retmax": 500,
         "retmode": "json",
-        "sort": "pub_date"
+        "sort": "pub_date",
+        **get_ncbi_params()
     }
 
     try:
+        print(f"PubMed search query: {query}")
         response = requests.get(search_url, params=search_params, timeout=30)
         response.raise_for_status()
         search_results = response.json()
 
         id_list = search_results.get("esearchresult", {}).get("idlist", [])
+        print(f"PubMed search returned {len(id_list)} article IDs")
 
         if not id_list:
+            # Log the full response for debugging
+            print(f"PubMed esearch response: {search_results}")
             return []
 
         # Fetch article details
@@ -126,7 +152,8 @@ def fetch_article_details(pmid_list):
         "db": "pubmed",
         "id": ",".join(pmid_list),
         "retmode": "xml",
-        "rettype": "abstract"
+        "rettype": "abstract",
+        **get_ncbi_params()
     }
 
     try:
