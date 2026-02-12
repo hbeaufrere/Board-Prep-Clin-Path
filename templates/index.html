@@ -441,57 +441,87 @@
             display: block;
         }
 
-        /* Drive file list */
-        .drive-file-item {
+        /* eClinPath topic browser */
+        .topic-category {
+            margin-bottom: 12px;
+        }
+
+        .topic-category-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            background: #edf2f7;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #2c5282;
+            transition: background 0.2s ease;
+            user-select: none;
+        }
+
+        .topic-category-header:hover {
+            background: #e2e8f0;
+        }
+
+        .topic-category-header .arrow {
+            transition: transform 0.2s ease;
+            font-size: 0.7rem;
+        }
+
+        .topic-category-header.expanded .arrow {
+            transform: rotate(90deg);
+        }
+
+        .topic-subtopics {
+            display: none;
+            padding-left: 10px;
+            margin-top: 4px;
+        }
+
+        .topic-subtopics.expanded {
+            display: block;
+        }
+
+        .topic-item {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 10px 15px;
+            padding: 8px 15px;
             background: #f7fafc;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            border-left: 4px solid #48bb78;
+            border-radius: 6px;
+            margin-bottom: 4px;
+            border-left: 3px solid transparent;
             cursor: pointer;
-            transition: background 0.2s ease;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
         }
 
-        .drive-file-item:hover {
+        .topic-item:hover {
             background: #edf2f7;
         }
 
-        .drive-file-item.selected {
+        .topic-item.selected {
             background: #ebf8ff;
             border-left-color: #2c5282;
         }
 
-        .drive-file-item input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
+        .topic-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
             cursor: pointer;
         }
 
-        .drive-file-name {
-            font-weight: 600;
-            color: #2d3748;
-            font-size: 0.95rem;
-        }
-
-        .drive-file-meta {
-            font-size: 0.8rem;
+        .topic-item a {
             color: #718096;
+            text-decoration: none;
+            font-size: 0.75rem;
+            margin-left: auto;
         }
 
-        .drive-not-configured {
-            text-align: center;
-            padding: 30px;
-            color: #718096;
-        }
-
-        .drive-not-configured code {
-            background: #edf2f7;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.85rem;
+        .topic-item a:hover {
+            color: #2c5282;
+            text-decoration: underline;
         }
     </style>
 </head>
@@ -515,7 +545,7 @@
     <div class="container">
         <header>
             <h1>Vet Clin Path MCQ Generator</h1>
-            <p>Generate board-style questions from veterinary clinical pathology journals</p>
+            <p>Generate board-style questions from PubMed journals and eClinPath topics</p>
             <p style="font-size: 0.85rem; margin-top: 8px; opacity: 0.8;">Melanie Ammersbach, DVM, DACVP</p>
         </header>
 
@@ -526,7 +556,7 @@
             <div class="card">
                 <div class="source-tabs">
                     <div class="source-tab active" onclick="switchSource('pubmed')">PubMed</div>
-                    <div class="source-tab" onclick="switchSource('drive')">Google Drive</div>
+                    <div class="source-tab" onclick="switchSource('eclinpath')">eClinPath</div>
                 </div>
 
                 <!-- PubMed Panel -->
@@ -560,30 +590,19 @@
                     </div>
                 </div>
 
-                <!-- Google Drive Panel -->
-                <div class="source-panel" id="drive-panel">
+                <!-- eClinPath Topics Panel -->
+                <div class="source-panel" id="eclinpath-panel">
                     <div class="stats-bar">
                         <div class="stat-item">
-                            <strong>Drive Files:</strong> <span id="drive-file-count">0</span>
+                            <strong>Selected Topics:</strong> <span id="eclinpath-selected-count">0</span>
                         </div>
-                        <div class="stat-item">
-                            <strong>Selected:</strong> <span id="drive-selected-count">0</span>
-                        </div>
-                        <button onclick="loadDriveFiles()" style="padding: 5px 12px; border-radius: 4px; border: 1px solid #cbd5e0; background: #edf2f7; cursor: pointer; font-size: 0.85rem;">Refresh</button>
+                        <button onclick="selectAllTopics()" style="padding: 5px 12px; border-radius: 4px; border: 1px solid #cbd5e0; background: #edf2f7; cursor: pointer; font-size: 0.85rem;">Select All</button>
+                        <button onclick="clearAllTopics()" style="padding: 5px 12px; border-radius: 4px; border: 1px solid #cbd5e0; background: #edf2f7; cursor: pointer; font-size: 0.85rem;">Clear</button>
                     </div>
-                    <div class="loading" id="drive-loading">
-                        <div class="spinner"></div>
-                        <p>Fetching files from Google Drive...</p>
-                    </div>
-                    <div class="articles-list" id="drive-files-list">
-                        <div class="drive-not-configured" id="drive-not-configured">
-                            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#718096" stroke-width="1.5" style="margin-bottom: 15px;">
-                                <path d="M22 12H16L14 15H10L8 12H2"/>
-                                <path d="M5.45 5.11L2 12V18A2 2 0 0 0 4 20H20A2 2 0 0 0 22 18V12L18.55 5.11A2 2 0 0 0 16.76 4H7.24A2 2 0 0 0 5.45 5.11Z"/>
-                            </svg>
-                            <p style="margin-bottom: 10px;">Google Drive not connected yet</p>
-                            <p style="font-size: 0.85rem;">Set <code>GOOGLE_APPS_SCRIPT_URL</code> in your .env file</p>
-                            <p style="font-size: 0.85rem; margin-top: 5px;">See <code>google_apps_script.js</code> for setup instructions</p>
+                    <p style="font-size: 0.8rem; color: #718096; margin-bottom: 12px;">Select topics from <a href="https://eclinpath.com" target="_blank" style="color: #2c5282;">eClinPath</a> (Cornell University) to generate questions from</p>
+                    <div class="articles-list" id="eclinpath-topics-list">
+                        <div class="empty-state">
+                            <p>Loading topics...</p>
                         </div>
                     </div>
                 </div>
@@ -644,14 +663,14 @@
         </div>
 
         <footer>
-            <p>Powered by PubMed E-utilities, Google Drive, and Claude AI</p>
+            <p>Powered by PubMed E-utilities, eClinPath (Cornell University), and Claude AI</p>
         </footer>
     </div>
 
     <script>
         let articlesData = [];
-        let driveFilesData = [];
-        let selectedDriveFiles = new Set();
+        let eclinpathTopics = {};
+        let selectedEclinpathTopics = [];
         let currentSource = 'pubmed';
         let formattedText = '';
 
@@ -784,10 +803,9 @@
 
             try {
                 let response;
-                if (currentSource === 'drive') {
-                    const fileIds = Array.from(selectedDriveFiles);
-                    if (fileIds.length === 0) {
-                        showAlert('Please select at least one file from Google Drive', 'error');
+                if (currentSource === 'eclinpath') {
+                    if (selectedEclinpathTopics.length === 0) {
+                        showAlert('Please select at least one eClinPath topic', 'error');
                         generateBtn.disabled = false;
                         generateBtn.innerHTML = `
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -797,10 +815,10 @@
                         `;
                         return;
                     }
-                    response = await fetch('/api/generate-mcq-drive', {
+                    response = await fetch('/api/generate-mcq-eclinpath', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ num_questions: numQuestions, file_ids: fileIds })
+                        body: JSON.stringify({ num_questions: numQuestions, topics: selectedEclinpathTopics })
                     });
                 } else {
                     response = await fetch('/api/generate-mcq', {
@@ -852,21 +870,31 @@
                             questionsHtml += '-'.repeat(40) + '\n\n';
 
                             // Answers - with reference and clickable link
-                            // Format: FirstAuthor et al. Title. JournalAbbrev. Year.
-                            const firstAuthor = mcq.article_authors ? mcq.article_authors.split(',')[0].trim() : 'Unknown';
-                            const authorCitation = mcq.article_authors && mcq.article_authors.includes(',') ? `${firstAuthor} et al.` : firstAuthor;
-                            const journalAbbrev = getJournalAbbrev(mcq.article_journal);
-                            const year = mcq.article_year ? mcq.article_year.match(/\d{4}/)?.[0] || mcq.article_year : '';
-                            const reference = `${authorCitation} ${mcq.article_title}. ${journalAbbrev}. ${year}.`;
+                            const isEclinpath = mcq.article_journal === 'eClinPath';
+                            let reference, refLabel, refUrl;
+
+                            if (isEclinpath) {
+                                reference = `${mcq.article_title}. eClinPath, Cornell University.`;
+                                refLabel = 'eClinPath';
+                                refUrl = mcq.article_url;
+                            } else {
+                                const firstAuthor = mcq.article_authors ? mcq.article_authors.split(',')[0].trim() : 'Unknown';
+                                const authorCitation = mcq.article_authors && mcq.article_authors.includes(',') ? `${firstAuthor} et al.` : firstAuthor;
+                                const journalAbbrev = getJournalAbbrev(mcq.article_journal);
+                                const year = mcq.article_year ? mcq.article_year.match(/\d{4}/)?.[0] || mcq.article_year : '';
+                                reference = `${authorCitation} ${mcq.article_title}. ${journalAbbrev}. ${year}.`;
+                                refLabel = 'PubMed';
+                                refUrl = mcq.article_url;
+                            }
 
                             answersText += `QUESTION ${questionNum}:\n`;
                             answersText += `Reference: ${reference}\n`;
-                            answersText += `PubMed: ${mcq.article_url}\n\n`;
+                            answersText += `${refLabel}: ${refUrl}\n\n`;
                             answersText += answerPart + '\n\n';
 
                             answersHtml += `QUESTION ${questionNum}:\n`;
                             answersHtml += `Reference: ${reference}\n`;
-                            answersHtml += `PubMed: <a href="${mcq.article_url}" target="_blank" style="color: #2c5282;">${mcq.article_url}</a>\n\n`;
+                            answersHtml += `${refLabel}: <a href="${refUrl}" target="_blank" style="color: #2c5282;">${refUrl}</a>\n\n`;
                             answersHtml += answerPart + '\n\n';
                         } else {
                             questionsText += `QUESTION ${questionNum}\n`;
@@ -926,74 +954,89 @@
                 document.getElementById('pubmed-panel').classList.add('active');
             } else {
                 document.querySelector('.source-tab:nth-child(2)').classList.add('active');
-                document.getElementById('drive-panel').classList.add('active');
-                if (driveFilesData.length === 0) {
-                    loadDriveFiles();
+                document.getElementById('eclinpath-panel').classList.add('active');
+                if (Object.keys(eclinpathTopics).length === 0) {
+                    loadEclinpathTopics();
                 }
             }
         }
 
-        async function loadDriveFiles() {
-            const loadingEl = document.getElementById('drive-loading');
-            const listEl = document.getElementById('drive-files-list');
-            const notConfigured = document.getElementById('drive-not-configured');
-
-            loadingEl.classList.add('active');
+        async function loadEclinpathTopics() {
+            const listEl = document.getElementById('eclinpath-topics-list');
 
             try {
-                const response = await fetch('/api/drive-files');
+                const response = await fetch('/api/eclinpath-topics');
                 const data = await response.json();
 
-                loadingEl.classList.remove('active');
-
                 if (data.success) {
-                    driveFilesData = data.files;
-                    document.getElementById('drive-file-count').textContent = data.count;
+                    eclinpathTopics = data.topics;
+                    let html = '';
 
-                    if (data.files.length === 0) {
-                        listEl.innerHTML = '<div class="drive-not-configured"><p>No files found in the Drive folder.</p><p style="font-size: 0.85rem; margin-top: 5px;">Add PDF, Google Doc, or Word files to your folder.</p></div>';
-                    } else {
-                        listEl.innerHTML = data.files.map(file => {
-                            const fileType = file.mimeType.includes('pdf') ? 'PDF' :
-                                             file.mimeType.includes('document') ? 'DOC' :
-                                             file.mimeType.includes('word') ? 'DOCX' : 'TXT';
-                            const checked = selectedDriveFiles.has(file.id) ? 'checked' : '';
-                            const selectedClass = selectedDriveFiles.has(file.id) ? 'selected' : '';
-                            return `
-                                <div class="drive-file-item ${selectedClass}" onclick="toggleDriveFile('${file.id}', this)">
-                                    <input type="checkbox" ${checked} onclick="event.stopPropagation(); toggleDriveFile('${file.id}', this.parentElement)">
-                                    <div>
-                                        <div class="drive-file-name">${file.name}</div>
-                                        <div class="drive-file-meta">${fileType} | Updated: ${new Date(file.lastUpdated).toLocaleDateString()}</div>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('');
+                    for (const [category, info] of Object.entries(eclinpathTopics)) {
+                        const categoryId = category.replace(/[^a-zA-Z0-9]/g, '-');
+                        html += `<div class="topic-category">`;
+                        html += `<div class="topic-category-header" onclick="toggleCategory('${categoryId}', this)">`;
+                        html += `<span class="arrow">&#9654;</span> ${category}`;
+                        html += `</div>`;
+                        html += `<div class="topic-subtopics" id="subtopics-${categoryId}">`;
+
+                        for (const [subtopic, url] of Object.entries(info.subtopics)) {
+                            const topicKey = `${category}::${subtopic}`;
+                            const isSelected = selectedEclinpathTopics.some(t => t.category === category && t.subtopic === subtopic);
+                            html += `<div class="topic-item ${isSelected ? 'selected' : ''}" onclick="toggleTopic('${category.replace(/'/g, "\\'")}', '${subtopic.replace(/'/g, "\\'")}', '${url}', this)">`;
+                            html += `<input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleTopic('${category.replace(/'/g, "\\'")}', '${subtopic.replace(/'/g, "\\'")}', '${url}', this.parentElement)">`;
+                            html += `<span>${subtopic}</span>`;
+                            html += `<a href="${url}" target="_blank" onclick="event.stopPropagation();">view</a>`;
+                            html += `</div>`;
+                        }
+
+                        html += `</div></div>`;
                     }
-                } else {
-                    if (notConfigured) {
-                        notConfigured.style.display = 'block';
-                    } else {
-                        listEl.innerHTML = '<div class="drive-not-configured"><p>Google Drive not connected yet</p><p style="font-size: 0.85rem; margin-top: 5px;">Set <code>GOOGLE_APPS_SCRIPT_URL</code> in your .env file</p></div>';
-                    }
+
+                    listEl.innerHTML = html;
                 }
             } catch (error) {
-                loadingEl.classList.remove('active');
-                showAlert('Failed to fetch Drive files: ' + error.message, 'error');
+                listEl.innerHTML = '<p style="color: #e53e3e;">Failed to load topics</p>';
             }
         }
 
-        function toggleDriveFile(fileId, element) {
-            if (selectedDriveFiles.has(fileId)) {
-                selectedDriveFiles.delete(fileId);
+        function toggleCategory(categoryId, headerEl) {
+            const subtopicsEl = document.getElementById('subtopics-' + categoryId);
+            const isExpanded = subtopicsEl.classList.contains('expanded');
+            subtopicsEl.classList.toggle('expanded');
+            headerEl.classList.toggle('expanded');
+        }
+
+        function toggleTopic(category, subtopic, url, element) {
+            const idx = selectedEclinpathTopics.findIndex(t => t.category === category && t.subtopic === subtopic);
+            if (idx >= 0) {
+                selectedEclinpathTopics.splice(idx, 1);
                 element.classList.remove('selected');
                 element.querySelector('input[type="checkbox"]').checked = false;
             } else {
-                selectedDriveFiles.add(fileId);
+                selectedEclinpathTopics.push({ category, subtopic, url });
                 element.classList.add('selected');
                 element.querySelector('input[type="checkbox"]').checked = true;
             }
-            document.getElementById('drive-selected-count').textContent = selectedDriveFiles.size;
+            document.getElementById('eclinpath-selected-count').textContent = selectedEclinpathTopics.length;
+        }
+
+        function selectAllTopics() {
+            selectedEclinpathTopics = [];
+            for (const [category, info] of Object.entries(eclinpathTopics)) {
+                for (const [subtopic, url] of Object.entries(info.subtopics)) {
+                    selectedEclinpathTopics.push({ category, subtopic, url });
+                }
+            }
+            // Re-render to update checkboxes
+            loadEclinpathTopics();
+            document.getElementById('eclinpath-selected-count').textContent = selectedEclinpathTopics.length;
+        }
+
+        function clearAllTopics() {
+            selectedEclinpathTopics = [];
+            loadEclinpathTopics();
+            document.getElementById('eclinpath-selected-count').textContent = 0;
         }
 
         function showAlert(message, type) {

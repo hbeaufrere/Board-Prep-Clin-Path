@@ -17,7 +17,6 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key')
 
 PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-GOOGLE_APPS_SCRIPT_URL = os.getenv('GOOGLE_APPS_SCRIPT_URL', '')
 
 # Journal configurations with PubMed search terms
 JOURNALS = {
@@ -322,59 +321,139 @@ EXPLANATION: Please review the full article at {article['url']} to determine the
     }
 
 
-def fetch_drive_files():
-    """Fetch file list from Google Drive via Apps Script"""
-    if not GOOGLE_APPS_SCRIPT_URL:
-        return []
+# eClinPath topic tree (Cornell University veterinary clinical pathology resource)
+ECLINPATH_TOPICS = {
+    "Hematology": {
+        "url": "https://eclinpath.com/hematology/",
+        "subtopics": {
+            "Hemogram basics": "https://eclinpath.com/hematology/hemogram-basics/",
+            "Blood smear examination": "https://eclinpath.com/hematology/hemogram-basics/blood-smear-examination/",
+            "Leukogram patterns": "https://eclinpath.com/hematology/hemogram-basics/leukogram/",
+            "RBC morphology": "https://eclinpath.com/hematology/morphologic-features/red-blood-cells/",
+            "Normal erythrocytes": "https://eclinpath.com/hematology/morphologic-features/red-blood-cells/normal-erythrocytes/",
+            "WBC morphology & leukocytes": "https://eclinpath.com/hematology/leukogram-changes/leukocytes/",
+            "Platelet morphology": "https://eclinpath.com/hematology/morphologic-features/platelets/",
+            "Reticulocyte count": "https://eclinpath.com/hematology/tests/absolute-reticulocyte-count/",
+            "Reticulocyte indices": "https://eclinpath.com/hematology/tests/reticulocyte-indices/",
+            "Erythrocytosis / Polycythemia": "https://eclinpath.com/hematology/polycythemia/",
+            "WBC counts": "https://eclinpath.com/hematology/tests/wbc-count/",
+            "Hematology quick guide": "https://eclinpath.com/hematology/tests/hematology-guide/",
+        }
+    },
+    "Chemistry - Liver": {
+        "url": "https://eclinpath.com/chemistry/liver/",
+        "subtopics": {
+            "ALT (Alanine aminotransferase)": "https://eclinpath.com/chemistry/liver/liver-injury/alanine-aminotransferase/",
+            "AST (Aspartate aminotransferase)": "https://eclinpath.com/chemistry/liver/liver-injury/aspartate-aminotransferase/",
+            "ALP (Alkaline phosphatase)": "https://eclinpath.com/chemistry/liver/cholestasis/alkaline-phosphatase/",
+            "GGT (Gamma-glutamyl transferase)": "https://eclinpath.com/chemistry/liver/cholestasis/gamma-glutamyl-transferase/",
+            "Bilirubin": "https://eclinpath.com/chemistry/liver/cholestasis/bilirubin/",
+            "Cholestasis": "https://eclinpath.com/chemistry/liver/cholestasis/",
+            "Liver function tests": "https://eclinpath.com/chemistry/liver/liver-function-tests/",
+            "Laboratory detection of liver disease": "https://eclinpath.com/chemistry/liver/laboratory-detection/",
+        }
+    },
+    "Chemistry - Kidney": {
+        "url": "https://eclinpath.com/chemistry/kidney/",
+        "subtopics": {
+            "Urea nitrogen (BUN)": "https://eclinpath.com/chemistry/kidney/urea-nitrogen/",
+            "Creatinine": "https://eclinpath.com/chemistry/kidney/creatinine/",
+            "SDMA": "https://eclinpath.com/chemistry/kidney/sdma/",
+            "GFR (Glomerular filtration rate)": "https://eclinpath.com/chemistry/kidney/gfr/",
+            "Azotemia": "https://eclinpath.com/chemistry/kidney/azotemia/",
+            "Types of renal disease": "https://eclinpath.com/chemistry/kidney/types-of-renal-disease/",
+            "Renal physiology": "https://eclinpath.com/chemistry/kidney/physiology/",
+        }
+    },
+    "Chemistry - Electrolytes & Acid-Base": {
+        "url": "https://eclinpath.com/chemistry/electrolytes/",
+        "subtopics": {
+            "Electrolytes overview": "https://eclinpath.com/chemistry/electrolytes/",
+            "Potassium": "https://eclinpath.com/chemistry/electrolytes/potassium/",
+            "Acid-base": "https://eclinpath.com/chemistry/acid-base/",
+            "Bicarbonate": "https://eclinpath.com/chemistry/acid-base/chemistry-tests/bicarbonate/",
+        }
+    },
+    "Chemistry - Minerals": {
+        "url": "https://eclinpath.com/chemistry/minerals/overview/",
+        "subtopics": {
+            "Minerals overview (Ca, P, Mg)": "https://eclinpath.com/chemistry/minerals/overview/",
+            "Calcium (total)": "https://eclinpath.com/chemistry/minerals/calcium/",
+            "Free ionized calcium": "https://eclinpath.com/chemistry/minerals/ionized-calcium/",
+            "Phosphate": "https://eclinpath.com/chemistry/minerals/phosphate/",
+        }
+    },
+    "Chemistry - Proteins": {
+        "url": "https://eclinpath.com/chemistry/proteins/",
+        "subtopics": {
+            "Proteins overview": "https://eclinpath.com/chemistry/proteins/",
+            "Total protein": "https://eclinpath.com/chemistry/proteins/total-protein/",
+        }
+    },
+    "Chemistry - Energy & Metabolites": {
+        "url": "https://eclinpath.com/chemistry/energy-metabolism/",
+        "subtopics": {
+            "Energy metabolism overview": "https://eclinpath.com/chemistry/energy-metabolism/",
+            "Glucose": "https://eclinpath.com/chemistry/energy-metabolism/glucose/",
+            "Cholesterol": "https://eclinpath.com/chemistry/energy-metabolism/cholesterol/",
+        }
+    },
+    "Chemistry - Iron Metabolism": {
+        "url": "https://eclinpath.com/chemistry/iron-metabolism/",
+        "subtopics": {
+            "Iron metabolism overview": "https://eclinpath.com/chemistry/iron-metabolism/",
+            "Iron physiology": "https://eclinpath.com/chemistry/iron-metabolism/physiology/",
+            "Iron distribution": "https://eclinpath.com/chemistry/iron-metabolism/iron-2/",
+            "Heme metabolism": "https://eclinpath.com/chemistry/iron-metabolism/heme-metabolism/",
+        }
+    },
+    "Hemostasis": {
+        "url": "https://eclinpath.com/hemostasis/",
+        "subtopics": {
+            "Hemostasis physiology": "https://eclinpath.com/hemostasis/physiology/",
+            "Primary hemostasis": "https://eclinpath.com/hemostasis/physiology/primary-hemostasis/",
+            "Secondary hemostasis": "https://eclinpath.com/hemostasis/physiology/secondary-hemostasis/",
+            "Coagulation cascade": "https://eclinpath.com/hemostasis/physiology/secondary-hemostasis/coagulation-cascade-new-model-3/",
+            "Fibrinolysis": "https://eclinpath.com/hemostasis/physiology/fibrinolysis/",
+            "Hemostasis tests overview": "https://eclinpath.com/hemostasis/tests/",
+            "Screening coagulation assays (PT, APTT)": "https://eclinpath.com/hemostasis/tests/screening-coagulation-assays/",
+            "DIC": "https://eclinpath.com/hemostasis/disorders/dic/",
+        }
+    },
+    "Urinalysis": {
+        "url": "https://eclinpath.com/urinalysis/",
+        "subtopics": {
+            "Urinalysis overview": "https://eclinpath.com/urinalysis/",
+            "Chemical constituents": "https://eclinpath.com/urinalysis/chemical-constituents/",
+            "Cellular constituents": "https://eclinpath.com/urinalysis/cellular-constituents/",
+            "Casts": "https://eclinpath.com/urinalysis/casts/",
+            "Crystals": "https://eclinpath.com/urinalysis/crystals/",
+            "Crystal quick guide": "https://eclinpath.com/urinalysis/crystal-quick-guide/",
+            "Cell quick guide": "https://eclinpath.com/urinalysis/cell-quick-quide/",
+        }
+    },
+    "Test Basics": {
+        "url": "https://eclinpath.com/test-basics/",
+        "subtopics": {
+            "Sample collection": "https://eclinpath.com/test-basics/sample-collection-2/",
+            "Test interpretation": "https://eclinpath.com/test-basics/test-interpretation/",
+            "Interferences": "https://eclinpath.com/test-basics/interferences/",
+        }
+    },
+}
 
-    try:
-        response = requests.get(
-            GOOGLE_APPS_SCRIPT_URL,
-            params={"action": "list"},
-            timeout=30
-        )
-        response.raise_for_status()
-        data = response.json()
-        if data.get("success"):
-            return data.get("files", [])
-        return []
-    except requests.RequestException as e:
-        print(f"Error fetching Drive files: {e}")
-        return []
 
-
-def fetch_drive_file_content(file_id):
-    """Fetch text content of a Drive file via Apps Script"""
-    if not GOOGLE_APPS_SCRIPT_URL:
-        return None
-
-    try:
-        response = requests.get(
-            GOOGLE_APPS_SCRIPT_URL,
-            params={"action": "content", "fileId": file_id},
-            timeout=60
-        )
-        response.raise_for_status()
-        data = response.json()
-        if data.get("success"):
-            return data
-        return None
-    except requests.RequestException as e:
-        print(f"Error fetching Drive file content: {e}")
-        return None
-
-
-def generate_mcq_from_drive_file(file_data, num_questions=1):
-    """Generate MCQ from a Google Drive file's content"""
+def generate_mcq_from_eclinpath(topic_name, subtopic_name, subtopic_url, num_questions=1):
+    """Generate MCQ based on eClinPath veterinary clinical pathology topic"""
     api_key = os.getenv('ANTHROPIC_API_KEY')
 
     if not api_key:
         return {
-            "article_title": file_data["fileName"],
+            "article_title": f"{topic_name} - {subtopic_name}",
             "article_pmid": "",
-            "article_url": "",
-            "article_authors": "",
-            "article_journal": "Google Drive",
+            "article_url": subtopic_url,
+            "article_authors": "eClinPath, Cornell University",
+            "article_journal": "eClinPath",
             "article_year": "",
             "questions": "Error: ANTHROPIC_API_KEY environment variable is not set"
         }
@@ -383,21 +462,21 @@ def generate_mcq_from_drive_file(file_data, num_questions=1):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        # Use up to 10000 chars of content to stay within token limits
-        content_text = file_data["content"][:10000]
+        prompt = f"""You are an expert in veterinary clinical pathology. Generate {num_questions} board examination-style multiple choice question(s) on the following topic from eClinPath (Cornell University's veterinary clinical pathology resource).
 
-        prompt = f"""Based on the following veterinary clinical pathology document, generate {num_questions} multiple choice question(s) in board examination style.
+Topic Category: {topic_name}
+Specific Topic: {subtopic_name}
+Reference URL: {subtopic_url}
 
-Document Title: {file_data['fileName']}
+Generate questions that test deep understanding of this topic as it relates to veterinary clinical pathology. Questions should be at the level expected for ACVP (American College of Veterinary Pathologists) board certification.
 
-Content:
-{content_text}
+Include species-specific considerations where relevant (dogs, cats, horses, cattle, birds, reptiles).
 
 For each question:
-1. Create a clinically relevant question that tests understanding of the key findings or concepts
-2. Provide 5 answer options (A, B, C, D, E) with 1 correct answer and 4 distractors
+1. Create a clinically relevant question, ideally presenting a clinical scenario with laboratory findings
+2. Provide 5 answer options (A, B, C, D, E) with 1 correct answer and 4 plausible distractors
 3. Indicate the correct answer
-4. Provide a brief explanation
+4. Provide a detailed explanation referencing the underlying pathophysiology
 
 Format each question as:
 QUESTION [number]:
@@ -411,38 +490,36 @@ E) [Option E]
 
 CORRECT ANSWER: [Letter]
 
-EXPLANATION: [Brief explanation of why this is correct and why other options are incorrect]
+EXPLANATION: [Detailed explanation of why this is correct and why other options are incorrect]
 
----
-
-Make questions appropriate for board-level veterinary clinical pathologists."""
+---"""
 
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=2000,
+            max_tokens=4000,
             messages=[
                 {"role": "user", "content": prompt}
             ]
         )
 
         return {
-            "article_title": file_data["fileName"],
+            "article_title": f"{topic_name} - {subtopic_name}",
             "article_pmid": "",
-            "article_url": "",
-            "article_authors": "",
-            "article_journal": "Google Drive",
+            "article_url": subtopic_url,
+            "article_authors": "eClinPath, Cornell University",
+            "article_journal": "eClinPath",
             "article_year": "",
             "questions": message.content[0].text
         }
 
     except Exception as e:
-        print(f"Error generating MCQ from Drive file: {e}")
+        print(f"Error generating MCQ from eClinPath topic: {e}")
         return {
-            "article_title": file_data["fileName"],
+            "article_title": f"{topic_name} - {subtopic_name}",
             "article_pmid": "",
-            "article_url": "",
-            "article_authors": "",
-            "article_journal": "Google Drive",
+            "article_url": subtopic_url,
+            "article_authors": "eClinPath, Cornell University",
+            "article_journal": "eClinPath",
             "article_year": "",
             "questions": f"Error generating question: {str(e)}"
         }
@@ -491,21 +568,12 @@ def get_journal_stats():
     })
 
 
-@app.route('/api/drive-files')
-def get_drive_files():
-    """API endpoint to fetch files from Google Drive"""
-    if not GOOGLE_APPS_SCRIPT_URL:
-        return jsonify({
-            "success": False,
-            "error": "Google Apps Script URL not configured. Set GOOGLE_APPS_SCRIPT_URL in your .env file.",
-            "files": []
-        })
-
-    files = fetch_drive_files()
+@app.route('/api/eclinpath-topics')
+def get_eclinpath_topics():
+    """API endpoint to get eClinPath topic tree"""
     return jsonify({
         "success": True,
-        "count": len(files),
-        "files": files
+        "topics": ECLINPATH_TOPICS
     })
 
 
@@ -562,54 +630,51 @@ def generate_mcq():
     })
 
 
-@app.route('/api/generate-mcq-drive', methods=['POST'])
-def generate_mcq_drive():
-    """API endpoint to generate MCQs from Google Drive files"""
+@app.route('/api/generate-mcq-eclinpath', methods=['POST'])
+def generate_mcq_eclinpath():
+    """API endpoint to generate MCQs from eClinPath topics"""
     data = request.json
     num_questions = int(data.get('num_questions', 5))
-    file_ids = data.get('file_ids', [])
+    selected_topics = data.get('topics', [])
 
-    if not file_ids:
+    if not selected_topics:
         return jsonify({
             "success": False,
-            "error": "No files selected"
+            "error": "No topics selected"
         })
 
-    if not GOOGLE_APPS_SCRIPT_URL:
-        return jsonify({
-            "success": False,
-            "error": "Google Apps Script URL not configured"
-        })
-
-    # Fetch content for each selected file and generate MCQs
+    # Each item in selected_topics: {"category": "Hematology", "subtopic": "RBC morphology", "url": "..."}
     mcq_results = []
-    # Distribute questions across selected files
-    questions_per_file = max(1, num_questions // len(file_ids))
-    extra = num_questions - (questions_per_file * len(file_ids))
+    questions_per_topic = max(1, num_questions // len(selected_topics))
+    extra = num_questions - (questions_per_topic * len(selected_topics))
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {}
-        for i, file_id in enumerate(file_ids):
-            q_count = questions_per_file + (1 if i < extra else 0)
+        for i, topic in enumerate(selected_topics):
+            q_count = questions_per_topic + (1 if i < extra else 0)
             if q_count <= 0:
                 continue
-            file_data = fetch_drive_file_content(file_id)
-            if file_data:
-                future = executor.submit(generate_mcq_from_drive_file, file_data, q_count)
-                futures[future] = file_data
+            future = executor.submit(
+                generate_mcq_from_eclinpath,
+                topic['category'],
+                topic['subtopic'],
+                topic['url'],
+                q_count
+            )
+            futures[future] = topic
 
         for future in as_completed(futures):
             try:
-                mcq = future.result(timeout=60)
+                mcq = future.result(timeout=120)
                 mcq_results.append(mcq)
             except Exception as e:
-                file_data = futures[future]
+                topic = futures[future]
                 mcq_results.append({
-                    "article_title": file_data.get("fileName", "Unknown"),
+                    "article_title": f"{topic['category']} - {topic['subtopic']}",
                     "article_pmid": "",
-                    "article_url": "",
-                    "article_authors": "",
-                    "article_journal": "Google Drive",
+                    "article_url": topic['url'],
+                    "article_authors": "eClinPath, Cornell University",
+                    "article_journal": "eClinPath",
                     "article_year": "",
                     "questions": f"Error generating question: {str(e)}"
                 })
