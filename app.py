@@ -240,39 +240,37 @@ def generate_mcq_from_article(article, num_questions=1):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        prompt = f"""Based on the following veterinary clinical pathology article abstract, generate {num_questions} multiple choice question(s) in board examination style.
+        prompt = f"""Based on the following veterinary clinical pathology article abstract, generate {num_questions} multiple choice question(s) in the style of the ACVP (American College of Veterinary Pathologists) Phase II Certifying Examination.
 
 Article Title: {article['title']}
 
 Abstract: {article['abstract']}
 
-For each question:
-1. Create a clinically relevant question that tests understanding of the key findings or concepts
-2. Provide 5 answer options (A, B, C, D, E) with 1 correct answer and 4 distractors
-3. Indicate the correct answer
-4. Provide a brief explanation
+IMPORTANT FORMAT RULES - follow the ACVP Phase II exam style exactly:
+- Questions can have 3, 4, or 5 answer choices (vary this naturally)
+- Use letter-period format for choices: A. B. C. D. E.
+- Questions should be concise and direct
+- When possible, present a clinical scenario with species, signalment, and laboratory data
+- Include data tables when relevant (format as plain text tables)
+- Questions should test knowledge, interpretation, or extended integrated interpretation
 
 Format each question as:
-QUESTION [number]:
-[Question text]
+[number]. [Question text - include clinical scenario with species and lab data when relevant]
 
-A) [Option A]
-B) [Option B]
-C) [Option C]
-D) [Option D]
-E) [Option E]
+A. [Option A]
+B. [Option B]
+C. [Option C]
+D. [Option D]
 
-CORRECT ANSWER: [Letter]
+Answer: [Letter]
 
-EXPLANATION: [Brief explanation of why this is correct and why other options are incorrect]
+EXPLANATION: [Detailed explanation of why this is correct and why other options are incorrect, referencing the underlying pathophysiology]
 
----
-
-Make questions appropriate for board-level veterinary clinical pathologists."""
+---"""
 
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=2000,
+            max_tokens=4000,
             messages=[
                 {"role": "user", "content": prompt}
             ]
@@ -462,35 +460,56 @@ def generate_mcq_from_eclinpath(topic_name, subtopic_name, subtopic_url, num_que
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        prompt = f"""You are an expert in veterinary clinical pathology. Generate {num_questions} board examination-style multiple choice question(s) on the following topic from eClinPath (Cornell University's veterinary clinical pathology resource).
+        prompt = f"""You are an expert in veterinary clinical pathology. Generate {num_questions} multiple choice question(s) in the style of the ACVP (American College of Veterinary Pathologists) Phase II Certifying Examination.
 
 Topic Category: {topic_name}
 Specific Topic: {subtopic_name}
 Reference URL: {subtopic_url}
 
-Generate questions that test deep understanding of this topic as it relates to veterinary clinical pathology. Questions should be at the level expected for ACVP (American College of Veterinary Pathologists) board certification.
+IMPORTANT FORMAT RULES - follow the ACVP Phase II exam style exactly:
+- Questions can have 3, 4, or 5 answer choices (vary this naturally based on the question)
+- Use letter-period format for choices: A. B. C. D. E.
+- Questions should be concise and direct
+- Mix question types: some knowledge-only (text), some with clinical scenarios including species, signalment, and laboratory data
+- Include data tables when relevant (format as plain text tables with Test, Patient, Flag, Reference Interval columns)
+- Include species-specific considerations (dogs, cats, horses, cattle, birds, reptiles, exotics)
+- Some questions should present lab data and ask for the most likely diagnosis/condition/interpretation
+- Some questions should test specific knowledge (e.g., "In cats, which factor deficiency causes...")
 
-Include species-specific considerations where relevant (dogs, cats, horses, cattle, birds, reptiles).
+Here are examples of the ACVP exam style:
 
-For each question:
-1. Create a clinically relevant question, ideally presenting a clinical scenario with laboratory findings
-2. Provide 5 answer options (A, B, C, D, E) with 1 correct answer and 4 plausible distractors
-3. Indicate the correct answer
-4. Provide a detailed explanation referencing the underlying pathophysiology
+Example 1 (Knowledge):
+1. In cats, prolonged aPTT and normal PT without a bleeding tendency occurs with deficiency of which factor?
+A. Factor IX
+B. Factor XI
+C. Factor VII
+D. Factor XII
+Answer: D
 
-Format each question as:
-QUESTION [number]:
-[Question text]
+Example 2 (Interpretation with data table):
+2. Laboratory data from an African Grey parrot.
+Test (units) | Patient (Baseline) | Flag | Reference Interval | Patient (3h water deprivation) | Patient (post vasopressin)
+Sodium (mmol/L) | 159 | H | 134-152 | 159 | -
+Urine specific gravity | 1.003 | | 1.005-1.020 | 1.003 | 1.020
+Plasma osmolality (mOsmol/kg) | 327 | H | 299-313 | 340 | 312
+Which condition is most likely?
+A. Diabetes mellitus
+B. Medullary washout
+C. Psychogenic polydipsia
+D. Central diabetes insipidus
+Answer: D
 
-A) [Option A]
-B) [Option B]
-C) [Option C]
-D) [Option D]
-E) [Option E]
+Now generate {num_questions} question(s) on the topic "{subtopic_name}" following this exact format:
+[number]. [Question text - include clinical scenario with species and lab data when relevant]
 
-CORRECT ANSWER: [Letter]
+A. [Option A]
+B. [Option B]
+C. [Option C]
+D. [Option D]
 
-EXPLANATION: [Detailed explanation of why this is correct and why other options are incorrect]
+Answer: [Letter]
+
+EXPLANATION: [Detailed explanation of why this is correct and why other options are incorrect, referencing the underlying pathophysiology]
 
 ---"""
 

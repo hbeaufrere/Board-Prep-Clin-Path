@@ -832,9 +832,11 @@
 
                 if (data.success) {
                     // Format: Questions first, then all answers at the end
+                    const sourceLabel = currentSource === 'eclinpath' ? 'eClinPath topics' : 'veterinary clinical pathology journals';
+
                     // Plain text version for copying
-                    let questionsText = 'VET CLIN PATH - MCQ QUESTIONS\n';
-                    questionsText += 'Generated from veterinary clinical pathology journals\n';
+                    let questionsText = 'ACVP-STYLE CLINICAL PATHOLOGY QUESTIONS\n';
+                    questionsText += `Generated from ${sourceLabel}\n`;
                     questionsText += '=' .repeat(50) + '\n\n';
 
                     let answersText = '\n\n' + '=' .repeat(50) + '\n';
@@ -842,8 +844,8 @@
                     answersText += '=' .repeat(50) + '\n\n';
 
                     // HTML version for display with clickable links
-                    let questionsHtml = 'VET CLIN PATH - MCQ QUESTIONS\n';
-                    questionsHtml += 'Generated from veterinary clinical pathology journals\n';
+                    let questionsHtml = 'ACVP-STYLE CLINICAL PATHOLOGY QUESTIONS\n';
+                    questionsHtml += `Generated from ${sourceLabel}\n`;
                     questionsHtml += '=' .repeat(50) + '\n\n';
 
                     let answersHtml = '\n\n' + '=' .repeat(50) + '\n';
@@ -853,20 +855,21 @@
                     data.mcq_results.forEach((mcq, index) => {
                         const questionNum = index + 1;
                         const fullText = mcq.questions;
-                        const correctAnswerMatch = fullText.match(/CORRECT ANSWER:/i);
 
-                        if (correctAnswerMatch) {
-                            const answerStart = fullText.indexOf(correctAnswerMatch[0]);
+                        // Match both "Answer: X" and "CORRECT ANSWER: X" formats
+                        const answerMatch = fullText.match(/\n\s*Answer:\s*[A-E]/i) || fullText.match(/CORRECT ANSWER:\s*[A-E]/i);
+
+                        if (answerMatch) {
+                            const answerStart = fullText.indexOf(answerMatch[0]);
                             const questionPart = fullText.substring(0, answerStart).trim();
                             const answerPart = fullText.substring(answerStart).trim();
 
-                            // Questions - no source, just the question
-                            questionsText += `QUESTION ${questionNum}\n`;
-                            questionsText += questionPart.replace(/^QUESTION \d+:?\s*/i, '') + '\n\n';
+                            // Questions - clean up numbering prefix
+                            const cleanQuestion = questionPart.replace(/^\d+\.\s*/, '').replace(/^QUESTION \d+:?\s*/i, '');
+                            questionsText += `${questionNum}. ${cleanQuestion}\n\n`;
                             questionsText += '-'.repeat(40) + '\n\n';
 
-                            questionsHtml += `QUESTION ${questionNum}\n`;
-                            questionsHtml += questionPart.replace(/^QUESTION \d+:?\s*/i, '') + '\n\n';
+                            questionsHtml += `${questionNum}. ${cleanQuestion}\n\n`;
                             questionsHtml += '-'.repeat(40) + '\n\n';
 
                             // Answers - with reference and clickable link
@@ -887,22 +890,21 @@
                                 refUrl = mcq.article_url;
                             }
 
-                            answersText += `QUESTION ${questionNum}:\n`;
+                            answersText += `Question ${questionNum}:\n`;
                             answersText += `Reference: ${reference}\n`;
-                            answersText += `${refLabel}: ${refUrl}\n\n`;
-                            answersText += answerPart + '\n\n';
+                            if (refUrl) answersText += `${refLabel}: ${refUrl}\n`;
+                            answersText += '\n' + answerPart + '\n\n';
 
-                            answersHtml += `QUESTION ${questionNum}:\n`;
+                            answersHtml += `Question ${questionNum}:\n`;
                             answersHtml += `Reference: ${reference}\n`;
-                            answersHtml += `${refLabel}: <a href="${refUrl}" target="_blank" style="color: #2c5282;">${refUrl}</a>\n\n`;
-                            answersHtml += answerPart + '\n\n';
+                            if (refUrl) answersHtml += `${refLabel}: <a href="${refUrl}" target="_blank" style="color: #2c5282;">${refUrl}</a>\n`;
+                            answersHtml += '\n' + answerPart + '\n\n';
                         } else {
-                            questionsText += `QUESTION ${questionNum}\n`;
-                            questionsText += fullText + '\n\n';
+                            const cleanQuestion = fullText.replace(/^\d+\.\s*/, '').replace(/^QUESTION \d+:?\s*/i, '');
+                            questionsText += `${questionNum}. ${cleanQuestion}\n\n`;
                             questionsText += '-'.repeat(40) + '\n\n';
 
-                            questionsHtml += `QUESTION ${questionNum}\n`;
-                            questionsHtml += fullText + '\n\n';
+                            questionsHtml += `${questionNum}. ${cleanQuestion}\n\n`;
                             questionsHtml += '-'.repeat(40) + '\n\n';
                         }
                     });
